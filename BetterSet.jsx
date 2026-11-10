@@ -1,6 +1,6 @@
 ﻿//@target indesign
 /*
-    BetterSet.jsx                                             Version 3.3
+    BetterSet.jsx                                             Version 3.4
 
     Optimizes ragged and justified text in Adobe InDesign.
 
@@ -61,7 +61,7 @@
 (function () {
 
     var SCRIPT_NAME = "BetterSet";
-    var VERSION = "3.3";
+    var VERSION = "3.4";
     var LABEL_KEY = "betterset";
     var TIME_LIMIT = 30;          // hard limit for the first round, seconds per paragraph
     var GOAL_PER_LINE = 0.4;      // below this, the stronger stage is not used

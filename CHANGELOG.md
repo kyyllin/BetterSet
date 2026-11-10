@@ -2,6 +2,11 @@
 
 All notable changes to BetterSet. The newest version is at the top.
 
+## 3.4 (2026-11-10)
+
+### Changed
+- No changes to the script. This release only raises the version number.
+
 ## 3.3 (2026-11-10)
 
 ### Added
