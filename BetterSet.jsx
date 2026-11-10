@@ -1,6 +1,6 @@
 ﻿//@target indesign
 /*
-    BetterSet.jsx                                             Version 3.4
+    BetterSet.jsx                                             Version 3.5
 
     Optimizes ragged and justified text in Adobe InDesign.
 
@@ -61,7 +61,8 @@
 (function () {
 
     var SCRIPT_NAME = "BetterSet";
-    var VERSION = "3.4";
+    var VERSION = "3.5";
+    var TITLE = SCRIPT_NAME + " " + VERSION;   // shown in the window title bars
     var LABEL_KEY = "betterset";
     var TIME_LIMIT = 30;          // hard limit for the first round, seconds per paragraph
     var GOAL_PER_LINE = 0.4;      // below this, the stronger stage is not used
@@ -1139,13 +1140,13 @@
     // Overlay while working
     function makeOverlay() {
         var WD = 480;
-        var w = new Window("palette", SCRIPT_NAME, undefined, { closeButton: false });
+        var w = new Window("palette", TITLE, undefined, { closeButton: false });
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
         w.margins = [30, 24, 30, 22];
         w.spacing = 4;
 
-        var head = headRow(w, "BETTERSET", WD);
+        var head = headRow(w, "BETTERSET " + VERSION, WD);
         spacer(w, 6);
         label(w, "LIVE SCORE", 10, COL.dim, true, WD);
         var tScore = label(w, "0.0", 64, COL.fg, true, WD);
@@ -1197,13 +1198,13 @@
     // Start window: score and settings
     function startDialog(info, S) {
         var WD = 480;
-        var w = new Window("dialog", SCRIPT_NAME);
+        var w = new Window("dialog", TITLE);
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
         w.margins = [30, 24, 30, 22];
         w.spacing = 4;
 
-        var head = headRow(w, "BETTERSET", WD);
+        var head = headRow(w, "BETTERSET " + VERSION, WD);
         head.right.text = plural(info.count, "paragraph", "paragraphs") + " " + info.where;
         spacer(w, 6);
         var tTotal = label(w, fmt(info.total), 64, COL.fg, true, WD);
@@ -1313,13 +1314,13 @@
     // Result: score before and after, biggest improvement, undo
     function resultDialog(rep, secs) {
         var WD = 480;
-        var w = new Window("dialog", SCRIPT_NAME);
+        var w = new Window("dialog", TITLE);
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
         w.margins = [30, 24, 30, 22];
         w.spacing = 4;
 
-        var head = headRow(w, "BETTERSET", WD);
+        var head = headRow(w, "BETTERSET " + VERSION, WD);
         head.right.text = rep.stopped ? "Stopped" : "Done";
         spacer(w, 6);
         label(w, fmt(rep.totalBefore) + "  →  " + fmt(rep.totalAfter), 44, COL.fg, true, WD);

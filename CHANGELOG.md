@@ -2,6 +2,11 @@
 
 All notable changes to BetterSet. The newest version is at the top.
 
+## 3.5 (2026-11-10)
+
+### Added
+- The version number is shown in the title bar and in the header of every BetterSet window (start window, live view, result window), for example *BetterSet 3.5*.
+
 ## 3.4 (2026-11-10)
 
 ### Changed

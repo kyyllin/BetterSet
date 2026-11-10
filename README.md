@@ -2,7 +2,7 @@
 
 An Adobe InDesign script that improves ragged and justified text. It tries thousands of small tracking and scaling variants per paragraph, lets InDesign recompose the text each time and keeps only what makes the setting measurably calmer.
 
-Current version: **3.4**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+Current version: **3.5**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Install
 
