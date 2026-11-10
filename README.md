@@ -2,7 +2,7 @@
 
 An Adobe InDesign script that improves ragged and justified text. It tries thousands of small tracking and scaling variants per paragraph, lets InDesign recompose the text each time and keeps only what makes the setting measurably calmer.
 
-Current version: **3.2**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+Current version: **3.3**. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Install
 
@@ -21,18 +21,24 @@ Current version: **3.2**. See [CHANGELOG.md](CHANGELOG.md) for what changed in e
 
 Run it once the copy is final. If the text changes later, just run it again.
 
+For the alternating style, a wider tracking range (for example −40 to 30) and hyphenation help, because words have to move between lines.
+
 ## Settings
 
 | Setting | Meaning |
 | --- | --- |
 | Tracking | Range and step in 1/1000 em. The script starts with half the range and uses the full range only where needed. |
 | Scaling | Maximum horizontal scaling in percent, 0 turns it off. |
-| Rag zone | How deep the ragged edge may be, in percent of the column width. Ragged text only. |
+| Rag style | **Natural**: a calm, rhythmic edge. **Alternating long short**: long lines reach the right edge, short lines end the rag zone deep. Ragged text only. |
+| Precision | **Exact**: small tolerances, lines must hit their targets closely. **Optical**: more tolerance, favours the overall impression. |
+| Rag zone | How deep the ragged edge may be, in percent of the column width. In alternating style: how deep the short lines end. Ragged text only. |
 | Search | Fixed time per paragraph, or until no further improvement turns up. |
 
 ## What is scored
 
-**Ragged text:** staircases, bellies and hollows, holes, protruding lines, an edge that is too uniform, rag zone depth.
+**Ragged text, natural:** staircases, bellies and hollows, holes, protruding lines, an edge that is too uniform, rag zone depth.
+
+**Ragged text, alternating:** long lines away from the right edge, short lines away from their target depth, lines of the same group not ending together.
 
 **Justified text:** word spaces that are too loose or too tight, uneven spacing from line to line, rivers.
 

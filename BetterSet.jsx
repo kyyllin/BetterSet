@@ -1,6 +1,6 @@
 ﻿//@target indesign
 /*
-    BetterSet.jsx                                             Version 3.2
+    BetterSet.jsx                                             Version 3.3
 
     Optimizes ragged and justified text in Adobe InDesign.
 
@@ -8,8 +8,8 @@
     Select text (only those paragraphs), select a text frame (the whole
     story) or select nothing (the whole document), then run the script.
     The start window shows the current score. The only settings are the
-    tracking range, horizontal scaling, rag zone and search time,
-    everything else follows from the text itself. The live view shows
+    tracking range, horizontal scaling, rag style, precision, rag zone
+    and search time, everything else follows from the text itself. The live view shows
     every attempt with its score. Hold Esc to stop, improvements made so
     far are kept. At the end, everything can be undone with one click.
 
@@ -26,9 +26,19 @@
     a paragraph is finished once many random attempts in a row did not
     find anything better (at most two minutes per paragraph).
 
-    RAGGED TEXT (left aligned)
-    Staircases, bellies and hollows, holes, protruding lines, an edge
-    that is too uniform, and the depth of the rag zone.
+    RAGGED TEXT (left aligned), two styles
+    Natural: a calm, rhythmic edge. Staircases, bellies and hollows,
+    holes, protruding lines, an edge that is too uniform, and the depth
+    of the rag zone.
+    Alternating: long and short lines take turns. The long lines should
+    reach the right edge and end at the same point, the short lines
+    should end at the same point the rag zone deep. Which line starts
+    long is chosen per paragraph.
+
+    PRECISION
+    Exact keeps tolerances small, so lines have to hit their targets
+    closely. Optical allows more tolerance and favours the overall
+    impression.
 
     JUSTIFIED TEXT (all justification types)
     Word spaces that are too loose or too tight, uneven word spacing from
@@ -51,7 +61,7 @@
 (function () {
 
     var SCRIPT_NAME = "BetterSet";
-    var VERSION = "3.2";
+    var VERSION = "3.3";
     var LABEL_KEY = "betterset";
     var TIME_LIMIT = 30;          // hard limit for the first round, seconds per paragraph
     var GOAL_PER_LINE = 0.4;      // below this, the stronger stage is not used
@@ -59,11 +69,14 @@
     var AUTO_CAP = 120;           // "until no further improvement": at most this many seconds per paragraph
     var AUTO_PATIENCE = 40;       // ...and stop after this many attempts in a row without improvement (at least)
 
-    var DEFAULTS = { tMin: -15, tMax: 10, tStep: 1, scale: 1, zone: 15, search: 8, untilBest: 0 };
+    // ragStyle: 0 natural, 1 alternating long short. precision: 0 exact, 1 optical
+    var DEFAULTS = { tMin: -15, tMax: 10, tStep: 1, scale: 1, zone: 15, search: 8, untilBest: 0, ragStyle: 0, precision: 1 };
 
     var WEIGHTS = {
         // ragged text
         stair: 3, belly: 2.5, hollow: 1.5, hole: 4, depth: 2, bulge: 1.5, flat: 0.3,
+        // ragged text, alternating style
+        altTarget: 3, altEven: 2,
         // justified text
         loose: 4, tight: 2, even: 2, river: 2,
         // both
@@ -211,18 +224,28 @@
     // Scoring
     // ------------------------------------------------------------------
 
-    function buildParams(zone) {
+    // S: the settings (zone, ragStyle, precision)
+    function buildParams(S) {
+        S = S || {};
+        var exact = S.precision === 0;
+        var tf = exact ? 0.5 : 1;        // exact: half the tolerances
         var P = {
             wStair: WEIGHTS.stair, wBelly: WEIGHTS.belly, wHollow: WEIGHTS.hollow,
             wHole: WEIGHTS.hole, wDepth: WEIGHTS.depth, wBulge: WEIGHTS.bulge, wFlat: WEIGHTS.flat,
             wLoose: WEIGHTS.loose, wTight: WEIGHTS.tight, wEven: WEIGHTS.even, wRiver: WEIGHTS.river,
             wHyph: WEIGHTS.hyph, wShort: WEIGHTS.shortWord, wSentence: WEIGHTS.sentence, wLast: WEIGHTS.last,
-            zonePct: zone || 15,
-            tolHole: 0.8, tolBulge: 0.8, tolStair: 0.3, tolFlat: 0.25, tolBelly: 0.5,
+            wAltTarget: WEIGHTS.altTarget, wAltEven: WEIGHTS.altEven,
+            zonePct: S.zone || 15,
+            style: S.ragStyle === 1 ? "alt" : "natural",
+            tolHole: 0.8 * tf, tolBulge: 0.8 * tf, tolStair: 0.3 * tf, tolFlat: 0.25 * tf, tolBelly: 0.5 * tf,
+            // alternating: tolerance for lines of a group ending together (em),
+            // depth band of the long lines (em), band of the short lines (share of the rag zone)
+            tolAlt: exact ? 0.08 : 0.35, tolAltLong: exact ? 0.1 : 0.5, tolAltShort: exact ? 0.05 : 0.25,
             minLast: 0.25, tolLast: 0.5, shortLen: 3,
             wChange: 0.5, wScale: 1,
             stop: {}
         };
+        if (exact) P.wEven *= 1.5;       // justified text: stricter about even spacing
         for (var i = 0; i < STOPWORDS.length; i++) P.stop["_" + STOPWORDS[i]] = true;
         return P;
     }
@@ -287,16 +310,64 @@
         }
     }
 
+    // Alternating style: long and short lines take turns. Long lines should
+    // reach the right edge, short lines should end the rag zone deep, and
+    // each group should end together. Both phases are tried (first line
+    // long or short), the better one counts.
+    // Returns the target edge of the short lines as a fraction of the column width.
+    function altSeq(seq, P, parts) {
+        var m = seq.length, k, p;
+        if (!m) return null;
+        var W = seq[0].W, D = P.zonePct / 100 * W;
+        var tolL = P.tolAltLong, tolS = P.tolAltShort * D, tolE = P.tolAlt;
+        var bestPen = null;
+        for (p = 0; p < 2; p++) {
+            var sl = 0, nl = 0, ss = 0, ns = 0, pen = 0, dv;
+            for (k = 0; k < m; k++) {
+                var g = seq[k].gap;
+                if ((k + p) % 2 === 0) {
+                    // long line: from the right edge to tolL deep
+                    dv = Math.max(g - tolL, -g, 0);
+                    sl += g; nl++;
+                } else {
+                    // short line: the rag zone deep, give or take tolS
+                    dv = Math.max(Math.abs(g - D) - tolS, 0);
+                    ss += g; ns++;
+                }
+                pen += P.wAltTarget * sq(dv);
+            }
+            // each group ends together
+            var lm = sl / nl, sm = ns ? ss / ns : 0;
+            for (k = 0; k < m; k++) {
+                dv = Math.abs(seq[k].gap - ((k + p) % 2 === 0 ? lm : sm)) - tolE;
+                if (dv > 0) pen += P.wAltEven * sq(dv);
+            }
+            if (bestPen === null || pen < bestPen) bestPen = pen;
+        }
+        parts.alt += bestPen;
+        return [clamp(1 - D / W, 0, 1)];
+    }
+
     function scoreRag(L, P, parts) {
         var ls = L.lines, n = ls.length, i;
-        var seq = [];
+        var seq = [], alt = P.style === "alt";
+        function flush() {
+            if (!seq.length) return;
+            if (alt) {
+                var g = altSeq(seq, P, parts);
+                if (g && !L.guides) L.guides = g;
+            } else {
+                shapeSeq(seq, P, parts);
+            }
+            seq = [];
+        }
         for (i = 0; i < n; i++) {
             var l = ls[i];
-            if (seq.length && seq[seq.length - 1].col !== l.col) { shapeSeq(seq, P, parts); seq = []; }
-            if (l.end) { shapeSeq(seq, P, parts); seq = []; }
+            if (seq.length && seq[seq.length - 1].col !== l.col) flush();
+            if (l.end) flush();
             else seq.push(l);
         }
-        shapeSeq(seq, P, parts);
+        flush();
 
         // Last line (and lines before a forced line break)
         for (i = 1; i < n; i++) {
@@ -304,6 +375,7 @@
             if (!e.end || pr.end || pr.col !== e.col) continue;
             var len = e.W - e.gap, minLen = P.minLast * e.W;
             if (len < minLen) parts.last += P.wLast * sq(minLen - len) * 0.5;
+            if (alt) continue;
             var over = pr.gap - e.gap - P.tolLast;
             if (over > 0) parts.last += P.wLast * sq(over) * 0.5;
         }
@@ -394,8 +466,9 @@
     }
 
     function scoreLayout(L, P) {
+        L.guides = null;
         var parts = {
-            depth: 0, hole: 0, bulge: 0, belly: 0, stair: 0, flat: 0,
+            depth: 0, hole: 0, bulge: 0, belly: 0, stair: 0, flat: 0, alt: 0,
             loose: 0, tight: 0, even: 0, river: 0,
             last: 0, hyph: 0, words: 0
         };
@@ -965,6 +1038,7 @@
         cv.ghost = [];
         cv.cur = [];
         cv.best = [];
+        cv.guides = [];
         cv.draws = 0;
         cv.onDraw = function () {
             this.draws++;
@@ -974,6 +1048,11 @@
             var x0 = 8, usable = W - 16;
             g.newPath(); g.moveTo(x0 + usable + 0.5, 4); g.lineTo(x0 + usable + 0.5, H - 4);
             g.strokePath(g.newPen(g.PenType.SOLID_COLOR, COL.edge, 1));
+            var gp = g.newPen(g.PenType.SOLID_COLOR, COL.accent, 1), q;
+            for (q = 0; q < this.guides.length; q++) {
+                var gx = x0 + this.guides[q] * usable + 0.5;
+                for (var yy = 4; yy < H - 4; yy += 6) { g.newPath(); g.moveTo(gx, yy); g.lineTo(gx, Math.min(yy + 3, H - 4)); g.strokePath(gp); }
+            }
             var n = Math.max(this.ghost.length, this.cur.length);
             if (!n) return;
             var pitch = Math.min(12, (H - 16) / n), bh = Math.max(1, pitch * 0.72);
@@ -1000,10 +1079,11 @@
                 g.newPath(); g.rectPath(x0 + this.best[i] * usable - 1, y - 2, 2, bh + 4); g.fillPath(ab);
             }
         };
-        cv.setData = function (gh, cu, be) {
+        cv.setData = function (gh, cu, be, gd) {
             if (gh) this.ghost = gh;
             if (cu) this.cur = cu;
             if (be) this.best = be;
+            if (gd) this.guides = gd;
             redraw(this);
         };
         return cv;
@@ -1074,7 +1154,7 @@
         var cv = makeCanvas(w, WD, 200);
         spacer(w, 4);
         var tStatus = label(w, " ", 11, COL.dim, false, WD);
-        label(w, "Black the current attempt, grey the starting length, orange the best state", 10, COL.dim, false, WD);
+        label(w, "Black the current attempt, grey the starting length, orange the best state, dashed the target of the short lines", 10, COL.dim, false, WD);
         spacer(w, 10);
         var bar = makeBar(w, WD, 3);
         spacer(w, 6);
@@ -1098,7 +1178,7 @@
                     if (o.sub !== undefined) tSub.text = o.sub;
                     if (o.status !== undefined) tStatus.text = o.status;
                     if (o.tries !== undefined) foot.left.text = "Variants " + fmtInt(o.tries);
-                    if (o.ghost || o.cur || o.best) cv.setData(o.ghost, o.cur, o.best);
+                    if (o.ghost || o.cur || o.best || o.guides) cv.setData(o.ghost, o.cur, o.best, o.guides);
                     if (o.progress !== undefined) bar.setValue(o.progress);
                     w.update();
                 } catch (e) {}
@@ -1150,9 +1230,22 @@
         var eScale = field(gS, S.scale, 3);
         gS.add("statictext", undefined, "%   (0 = off)");
 
+        var gR = settingRow(w, "Rag style");
+        var rbNat = gR.add("radiobutton", undefined, "Natural");
+        var rbAlt = gR.add("radiobutton", undefined, "Alternating long short");
+        rbNat.value = S.ragStyle !== 1;
+        rbAlt.value = S.ragStyle === 1;
+
+        var gP = settingRow(w, "Precision");
+        var rbExact = gP.add("radiobutton", undefined, "Exact");
+        var rbOpt = gP.add("radiobutton", undefined, "Optical, more tolerance");
+        rbExact.value = S.precision === 0;
+        rbOpt.value = S.precision !== 0;
+
         var gZ = settingRow(w, "Rag zone");
         var eZone = field(gZ, S.zone, 4);
-        gZ.add("statictext", undefined, "% of the column width, ragged text only");
+        var tZone = gZ.add("statictext", undefined, "");
+        tZone.preferredSize.width = 300;
 
         var gF = settingRow(w, "Search");
         var rbFixed = gF.add("radiobutton", undefined, "fixed time");
@@ -1181,15 +1274,20 @@
         updateEst();
         eSearch.onChanging = updateEst;
 
-        // The score reacts to the rag zone right away
-        eZone.onChanging = function () {
+        // The score reacts to rag style, precision and rag zone right away
+        function rescore() {
+            tZone.text = rbAlt.value ? "% of the column width, depth of the short lines"
+                : "% of the column width, ragged text only";
             var z = num(eZone.text, NaN);
             if (isNaN(z) || z < 3 || z > 60) return;
-            var r = info.rescore(z);
+            var r = info.rescore({ zone: z, ragStyle: rbAlt.value ? 1 : 0, precision: rbExact.value ? 0 : 1 });
             tTotal.text = fmt(r.total);
             tWorst.text = "Roughest paragraph: score " + fmt(r.worst.score);
-            cv.setData(null, r.worst.seg);
-        };
+            cv.setData(null, r.worst.seg, null, r.worst.guides || []);
+        }
+        eZone.onChanging = rescore;
+        rbNat.onClick = rbAlt.onClick = rbExact.onClick = rbOpt.onClick = rescore;
+        rescore();
 
         spacer(w, 14);
         var gB = buttonRow(w);
@@ -1204,7 +1302,9 @@
             scale: clamp(Math.round(Math.abs(num(eScale.text, S.scale))), 0, 5),
             zone: clamp(num(eZone.text, S.zone), 3, 60),
             search: clamp(num(eSearch.text, S.search), 1, 600),
-            untilBest: rbAuto.value ? 1 : 0
+            untilBest: rbAuto.value ? 1 : 0,
+            ragStyle: rbAlt.value ? 1 : 0,
+            precision: rbExact.value ? 0 : 1
         };
         if (R.tMin === 0 && R.tMax === 0) R.tMin = -1;
         return R;
@@ -1296,7 +1396,7 @@
             var tg = list[i];
             tg.before = scoreLayout(tg.L0, P) + changeCost(tg.ctx, P);
             t += tg.before;
-            if (!worst || tg.before > worst.score) worst = { score: tg.before, seg: tg.seg0 };
+            if (!worst || tg.before > worst.score) worst = { score: tg.before, seg: tg.seg0, guides: tg.L0.guides };
         }
         return { total: t, worst: worst };
     }
@@ -1346,7 +1446,8 @@
                 head: "Paragraph " + (i + 1) + " of " + n + (isRag ? ", ragged" : ", justified"),
                 score: base + tg.before, sub: subText(startTotal, base + tg.before),
                 status: "Paragraph " + (i + 1) + ": start " + fmt(tg.before),
-                tries: rep.tries, ghost: tg.len0, cur: tg.seg0, best: isRag ? tg.len0 : [], progress: i / n
+                tries: rep.tries, ghost: tg.len0, cur: tg.seg0, best: isRag ? tg.len0 : [],
+                guides: (isRag && tg.L0.guides) || [], progress: i / n
             }, true);
 
             var r;
@@ -1363,6 +1464,7 @@
                             tries: rep.tries + tries,
                             cur: tryL ? segs(tryL) : null,
                             best: isRag ? lens(bestL) : null,
+                            guides: (isRag && bestL && bestL.guides) || [],
                             progress: (i + 0.5) / n
                         }, true);
                     },
@@ -1409,7 +1511,7 @@
         if (!app.documents.length) { alert("Please open a document first.", SCRIPT_NAME); return; }
         var rep = { done: 0, changed: 0, tries: 0, timeouts: 0, converged: 0, quiet: 0, skips: {}, bestImp: null, stopped: false };
         var S = loadSettings();
-        var P = buildParams(S.zone);
+        var P = buildParams(S);
 
         var found = collectTargets(rep);
         if (!found.list.length) { alert("No paragraphs found.", SCRIPT_NAME); return; }
@@ -1423,11 +1525,11 @@
         var R = startDialog({
             total: m.total, count: m.list.length, where: found.where, mix: m.mix,
             worst: m.worst, skip: skipText(rep),
-            rescore: function (z) { return totalFor(m.list, buildParams(z)); }
+            rescore: function (o) { return totalFor(m.list, buildParams(o)); }
         }, S);
         if (!R) return;
         saveSettings(R);
-        P = buildParams(R.zone);
+        P = buildParams(R);
         totalFor(m.list, P);
         var stages = makeStages(R);
 

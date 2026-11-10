@@ -2,6 +2,22 @@
 
 All notable changes to BetterSet. The newest version is at the top.
 
+## 3.3 (2026-11-10)
+
+### Added
+- New setting **Rag style** for ragged text:
+  - **Natural**: the calm, rhythmic edge as before.
+  - **Alternating long short**: long and short lines take turns. Long lines should reach the right edge, short lines should end the rag zone deep, and each group should end at the same point. Whether the first line is long or short is chosen per paragraph.
+- New setting **Precision**:
+  - **Exact**: small tolerances, lines have to hit their targets closely. In natural style all tolerances are halved, in justified text uneven word spacing counts 1.5 times as much.
+  - **Optical**: more tolerance, favours the overall impression. Same behaviour as 3.2 in natural style.
+- In alternating style the rag zone sets the depth of the short lines. The start window explains this next to the field.
+- The live view draws a dashed line where the short lines should end.
+- The score in the start window updates right away when rag style or precision change.
+
+### Notes
+- The alternating pattern needs words to move between lines, so it works best with a wider tracking range (for example −40 to 30) and with hyphenation turned on. In a simulation without hyphenation, 66 % of the lines hit their target with Exact and the default range, 79 % with −40 to 30.
+
 ## 3.2 (2026-10-30)
 
 ### Added
