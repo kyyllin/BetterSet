@@ -45,5 +45,5 @@ Right aligned and centered paragraphs, rotated frames, text wrap, table cells an
 ## Working on it
 
 - Every change raises the version number in the header of `BetterSet.jsx` and in its `VERSION` variable.
-- Every version gets an entry at the top of `CHANGELOG.md` and a GitHub release with the same notes.
+- Every version gets an entry at the top of `CHANGELOG.md`. A GitHub release with the same notes can be added by hand.
 - Before making changes, pull the latest state so nobody overwrites the other person's work.
